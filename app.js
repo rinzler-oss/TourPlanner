@@ -1107,7 +1107,8 @@
         '<div><div class="overview-label">Travel Date</div><div class="overview-value">' + formatDate(document.getElementById('travel-date').value) + '</div></div>' +
       '</div>';
 
-    var options = generateTransportOptions(distanceKm, origin, dest);
+    var travelDate = document.getElementById('travel-date').value;
+    var options = generateTransportOptions(distanceKm, origin, dest, travelDate);
 
     transportCards.innerHTML = options.map(function (opt, i) {
       // Build class tags
@@ -1134,6 +1135,37 @@
       var scheduleItems = opt.schedule.map(function (item) {
         return '<li>' + item + '</li>';
       }).join('');
+
+      // Build departures table
+      var depsHtml = '';
+      if (opt.departures && opt.departures.length > 0) {
+        var depDateStr = formatDate(document.getElementById('travel-date').value);
+        var thRow = opt.depHeaders.map(function (h) { return '<th>' + h + '</th>'; }).join('');
+        var tbRows = opt.departures.map(function (d) {
+          var sc = d.status === 'Available' ? 'available' : (d.status.indexOf('WL') !== -1 || d.status.indexOf('RAC') !== -1 ? 'waitlist' : 'filling');
+          return '<tr>' +
+            '<td><div class="dep-primary">' + d.col1 + '</div><div class="dep-secondary">' + d.col1sub + '</div></td>' +
+            '<td class="dep-time">' + d.departure + '</td>' +
+            '<td class="dep-time">' + d.arrival + '</td>' +
+            '<td>' + d.duration + '</td>' +
+            '<td class="dep-col5">' + d.col5 + '</td>' +
+            '<td class="dep-price">' + d.price + '</td>' +
+            '<td><span class="dep-status ' + sc + '">' + d.status + '</span></td>' +
+          '</tr>';
+        }).join('');
+        depsHtml = '<div class="departures-section">' +
+          '<div class="departures-hdr">' +
+            '<div class="detail-section-title">\uD83D\uDCC5 Departures on ' + depDateStr + '</div>' +
+            '<span class="departures-count">' + opt.departures.length + ' services found</span>' +
+          '</div>' +
+          '<div class="departures-table-wrap">' +
+            '<table class="departures-table">' +
+              '<thead><tr>' + thRow + '</tr></thead>' +
+              '<tbody>' + tbRows + '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>';
+      }
 
       return '<div class="transport-card" style="border-left-color:' + opt.color + '; animation-delay:' + (i * 0.12) + 's">' +
         // Top section: icon, name, comfort
@@ -1171,6 +1203,9 @@
         // Class/type tags
         (classTags ? '<div class="detail-section"><div class="detail-section-title">Available Classes / Types</div><div class="class-tags">' + classTags + '</div></div>' : '') +
 
+        // Departures schedule table
+        depsHtml +
+
         // Detail sections grid
         '<div class="transport-detail-sections">' +
           '<div class="detail-section">' +
@@ -1200,7 +1235,7 @@
     }).join('');
   }
 
-  function generateTransportOptions(distanceKm, origin, dest) {
+  function generateTransportOptions(distanceKm, origin, dest, travelDate) {
     var options = [];
     var busStops = Math.max(2, Math.round(distanceKm / 25));
     var trainStops = Math.max(1, Math.round(distanceKm / 80));
@@ -1250,6 +1285,8 @@
         'Counter booking at bus stand',
       ],
       tip: 'Book AC Volvo buses for long distance comfort. Carry a light blanket as AC buses can get cold. Online booking recommended during holidays and weekends.',
+      departures: generateBusSchedule(distanceKm, travelDate, origin, dest),
+      depHeaders: ['Operator', 'Departure', 'Arrival', 'Duration', 'Rating', 'Price', 'Status'],
     });
 
     // ===== Train =====
@@ -1301,7 +1338,61 @@
         'Station counter (PRS)',
       ],
       tip: 'Book via IRCTC at least 2-3 weeks in advance for confirmed tickets. Use Tatkal for last-minute booking (opens at 10 AM for AC). Carry your own food or pre-order meals via IRCTC e-Catering.',
+      departures: generateTrainSchedule(distanceKm, travelDate, origin, dest),
+      depHeaders: ['Train', 'Departure', 'Arrival', 'Duration', 'Classes', 'Price', 'Status'],
     });
+
+    // ===== Flights (longer routes) =====
+    if (distanceKm > 150) {
+      var flightDur = Math.max(50, Math.round(distanceKm / 700 * 60 + 30));
+      var flightFareMin = Math.round(distanceKm * 3 + 1500);
+      var flightFareMax = Math.round(distanceKm * 8 + 3000);
+      options.push({
+        type: 'Flights',
+        icon: '\u2708\uFE0F',
+        color: '#06b6d4',
+        time: fmtDur(flightDur),
+        cost: '\u20B9' + flightFareMin.toLocaleString('en-IN') + ' \u2013 \u20B9' + flightFareMax.toLocaleString('en-IN'),
+        distance: distanceKm.toFixed(1) + ' km',
+        stops: 'Non-stop / 1-stop',
+        frequency: 'Multiple daily',
+        comfort: '\u2605\u2605\u2605\u2605\u2605',
+        classes: [
+          { name: 'Economy', fare: flightFareMin, recommended: true },
+          { name: 'Premium Economy', fare: Math.round(flightFareMin * 1.6), recommended: false },
+          { name: 'Business', fare: Math.round(flightFareMin * 3), recommended: false },
+        ],
+        fareBreakdown: [
+          'Base fare varies by airline & booking time',
+          'Fuel surcharge: Included in ticket price',
+          'GST: 5% (Economy) / 12% (Business)',
+          'Convenience fee: \u20B9200\u2013400 for online booking',
+          'Baggage: 15\u201325 kg included (check-in)',
+        ],
+        routeDetails: [
+          'Nearest airport: ' + origin + ' \u2192 ' + dest,
+          'Air distance: ~' + distanceKm.toFixed(0) + ' km',
+          'Flight type: Domestic',
+          'Aircraft: A320/B737 typically on this route',
+        ],
+        schedule: [
+          'Multiple flights daily on major routes',
+          'First flight: ~5:30 AM',
+          'Last flight: ~10:30 PM',
+          'Peak travel: Morning & evening flights',
+        ],
+        booking: [
+          'MakeMyTrip (makemytrip.com)',
+          'Goibibo (goibibo.com)',
+          'Cleartrip (cleartrip.com)',
+          'Direct airline websites for best prices',
+          'Google Flights for price comparison',
+        ],
+        tip: 'Book 2\u20134 weeks in advance for best prices. Tuesday/Wednesday flights are usually cheapest. Use incognito mode while searching to avoid price hikes. Carry only cabin bag for short trips to save time.',
+        departures: generateFlightSchedule(distanceKm, travelDate, origin, dest),
+        depHeaders: ['Flight', 'Departure', 'Arrival', 'Duration', 'Type', 'Price', 'Status'],
+      });
+    }
 
     // ===== Metro (shorter routes) =====
     if (distanceKm < 80) {
@@ -1453,6 +1544,190 @@
     if (!dateStr) return '';
     var d = new Date(dateStr + 'T00:00:00');
     return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // ===== Schedule Generation Helpers =====
+  function makeSeededRng(seedStr) {
+    var seed = 0;
+    for (var i = 0; i < seedStr.length; i++) {
+      seed = ((seed << 5) - seed) + seedStr.charCodeAt(i);
+      seed |= 0;
+    }
+    seed = Math.abs(seed) || 1;
+    return function () {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+  }
+
+  function padT(h, m) {
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  function addMins(timeStr, minutes) {
+    var parts = timeStr.split(':');
+    var total = parseInt(parts[0]) * 60 + parseInt(parts[1]) + minutes;
+    var next = total >= 1440;
+    if (next) total -= 1440;
+    return padT(Math.floor(total / 60), total % 60) + (next ? ' +1' : '');
+  }
+
+  function fmtDur(mins) {
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    if (h === 0) return m + 'm';
+    if (m === 0) return h + 'h';
+    return h + 'h ' + m + 'm';
+  }
+
+  function generateFlightSchedule(distanceKm, travelDate, origin, dest) {
+    var rng = makeSeededRng(travelDate + '|F|' + origin + '|' + dest);
+    var airlines = [
+      { name: 'IndiGo', code: '6E' },
+      { name: 'Air India', code: 'AI' },
+      { name: 'SpiceJet', code: 'SG' },
+      { name: 'Vistara', code: 'UK' },
+      { name: 'AirAsia India', code: 'I5' },
+      { name: 'Akasa Air', code: 'QP' },
+      { name: 'Air India Express', code: 'IX' },
+    ];
+    var baseDur = Math.max(50, Math.round(distanceKm / 700 * 60 + 30));
+    var count = Math.min(10, Math.max(3, Math.round(distanceKm / 120)));
+    var deps = [];
+    for (var i = 0; i < count; i++) {
+      var al = airlines[Math.floor(rng() * airlines.length)];
+      var num = Math.floor(rng() * 9000) + 1000;
+      var depH = 5 + Math.floor(rng() * 17);
+      var depM = Math.floor(rng() * 12) * 5;
+      var dur = baseDur + Math.floor(rng() * 25) - 10;
+      dur = Math.max(45, dur);
+      var dep = padT(depH, depM);
+      var arr = addMins(dep, dur);
+      var price = Math.round(distanceKm * 3 + 1500 + rng() * 2000);
+      var sts = ['Available', 'Available', 'Filling Fast', 'Few Seats Left', 'Available'][Math.floor(rng() * 5)];
+      deps.push({
+        col1: al.name, col1sub: al.code + '-' + num,
+        departure: dep, arrival: arr, duration: fmtDur(dur),
+        col5: distanceKm > 1000 && rng() > 0.6 ? '1 Stop' : 'Non-stop',
+        price: '\u20B9' + price.toLocaleString('en-IN') + ' \u2013 \u20B9' + Math.round(price * 2.2).toLocaleString('en-IN'),
+        status: sts,
+      });
+    }
+    deps.sort(function (a, b) { return a.departure.localeCompare(b.departure); });
+    return deps;
+  }
+
+  function generateTrainSchedule(distanceKm, travelDate, origin, dest) {
+    var rng = makeSeededRng(travelDate + '|T|' + origin + '|' + dest);
+    var trains = [
+      { name: 'Rajdhani Express', type: 'Rajdhani', speed: 80 },
+      { name: 'Shatabdi Express', type: 'Shatabdi', speed: 75 },
+      { name: 'Duronto Express', type: 'Duronto', speed: 70 },
+      { name: 'Vande Bharat Express', type: 'Vande Bharat', speed: 85 },
+      { name: 'Garib Rath Express', type: 'Garib Rath', speed: 65 },
+      { name: 'Superfast Express', type: 'Superfast', speed: 60 },
+      { name: 'Express', type: 'Mail/Express', speed: 50 },
+      { name: 'Jan Shatabdi Express', type: 'Jan Shatabdi', speed: 65 },
+      { name: 'Humsafar Express', type: 'Humsafar', speed: 60 },
+      { name: 'Sampark Kranti Express', type: 'Sampark Kranti', speed: 55 },
+      { name: 'AC Express', type: 'AC Express', speed: 60 },
+      { name: 'Intercity Express', type: 'Intercity', speed: 55 },
+    ];
+    var count = Math.min(12, Math.max(3, Math.round(distanceKm / 70)));
+    var date = new Date(travelDate + 'T00:00:00');
+    var dayOfWeek = date.getDay();
+    var deps = [];
+    for (var i = 0; i < count + 4; i++) {
+      var tr = trains[Math.floor(rng() * trains.length)];
+      if (distanceKm < 200 && (tr.type === 'Rajdhani' || tr.type === 'Duronto') && rng() > 0.3) {
+        tr = trains[5 + Math.floor(rng() * 5)];
+      }
+      var tNum = 10000 + Math.floor(rng() * 9999);
+      var dur = Math.round(distanceKm / tr.speed * 60 + rng() * 40 - 15);
+      dur = Math.max(30, dur);
+      var depH = Math.floor(rng() * 24);
+      var depM = Math.floor(rng() * 12) * 5;
+      var dep = padT(depH, depM);
+      var arr = addMins(dep, dur);
+      var cls;
+      if (tr.type === 'Rajdhani' || tr.type === 'Duronto') cls = '1A, 2A, 3A';
+      else if (tr.type === 'Shatabdi' || tr.type === 'Vande Bharat') cls = 'EC, CC';
+      else if (tr.type === 'Garib Rath' || tr.type === 'Humsafar') cls = '3A';
+      else cls = 'SL, 3A, 2A, GN';
+      var base = tr.speed > 65 ? Math.round(distanceKm * 2.2 + 400 + rng() * 300) : Math.round(distanceKm * 0.8 + 80 + rng() * 200);
+      var sts = ['Available', 'Available', 'WL ' + (Math.floor(rng() * 30) + 1), 'RAC ' + (Math.floor(rng() * 15) + 1), 'Available', 'Available'][Math.floor(rng() * 6)];
+      var runsDaily = rng() > 0.35;
+      if (!runsDaily) {
+        var runDays = [];
+        for (var d = 0; d < 7; d++) { if (rng() > 0.45) runDays.push(d); }
+        if (runDays.indexOf(dayOfWeek) === -1) continue;
+      }
+      deps.push({
+        col1: tr.name, col1sub: '#' + tNum,
+        departure: dep, arrival: arr, duration: fmtDur(dur),
+        col5: cls,
+        price: '\u20B9' + base.toLocaleString('en-IN') + ' \u2013 \u20B9' + Math.round(base * 2.8).toLocaleString('en-IN'),
+        status: sts,
+      });
+      if (deps.length >= count) break;
+    }
+    deps.sort(function (a, b) { return a.departure.localeCompare(b.departure); });
+    return deps;
+  }
+
+  function generateBusSchedule(distanceKm, travelDate, origin, dest) {
+    var rng = makeSeededRng(travelDate + '|B|' + origin + '|' + dest);
+    var operators = [
+      { name: 'VRL Travels', types: ['AC Sleeper', 'Non-AC Sleeper', 'AC Seater'] },
+      { name: 'SRS Travels', types: ['AC Sleeper', 'Multi-Axle Volvo', 'AC Seater'] },
+      { name: 'Orange Travels', types: ['AC Sleeper', 'Non-AC Sleeper'] },
+      { name: 'Kaveri Travels', types: ['AC Sleeper', 'Non-AC Seater'] },
+      { name: 'National Travels', types: ['AC Sleeper', 'Non-AC Seater', 'Volvo AC'] },
+      { name: 'Paulo Travels', types: ['AC Sleeper', 'Volvo Multi-Axle'] },
+      { name: 'Neeta Travels', types: ['AC Sleeper', 'Volvo AC'] },
+      { name: 'KSRTC', types: ['Airavat Club Class', 'Airavat', 'Rajahamsa', 'Express'] },
+      { name: 'APSRTC', types: ['Garuda Plus', 'Super Luxury', 'Express'] },
+      { name: 'TSRTC', types: ['Garuda Plus', 'Super Luxury', 'Deluxe'] },
+      { name: 'MSRTC', types: ['Shivneri', 'Shivshahi', 'Semi-Luxury'] },
+      { name: 'GSRTC', types: ['Volvo', 'AC Sleeper', 'Express'] },
+      { name: 'IntrCity SmartBus', types: ['AC Seater', 'AC Sleeper'] },
+      { name: 'Zingbus', types: ['AC Seater', 'AC Sleeper'] },
+      { name: 'Parveen Travels', types: ['Multi-Axle AC Sleeper', 'AC Sleeper'] },
+      { name: 'Jabbar Travels', types: ['AC Sleeper', 'Non-AC Sleeper'] },
+    ];
+    var count = Math.min(16, Math.max(5, Math.round(distanceKm / 50)));
+    var deps = [];
+    for (var i = 0; i < count; i++) {
+      var op = operators[Math.floor(rng() * operators.length)];
+      var bt = op.types[Math.floor(rng() * op.types.length)];
+      var spd = (bt.indexOf('Volvo') !== -1 || bt.indexOf('Multi-Axle') !== -1) ? 55 : (bt === 'Express' || bt === 'Ordinary') ? 38 : 45;
+      var dur = Math.round(distanceKm / spd * 60 + rng() * 50 - 15);
+      dur = Math.max(30, dur);
+      var depH;
+      if (distanceKm > 200) {
+        depH = rng() > 0.3 ? (17 + Math.floor(rng() * 7)) % 24 : 5 + Math.floor(rng() * 12);
+      } else {
+        depH = 5 + Math.floor(rng() * 18);
+      }
+      var depM = Math.floor(rng() * 12) * 5;
+      var dep = padT(depH, depM);
+      var arr = addMins(dep, dur);
+      var isAC = bt.indexOf('AC') !== -1 || bt.indexOf('Volvo') !== -1;
+      var price = isAC ? Math.round(distanceKm * 2.5 + 200 + rng() * 300) : Math.round(distanceKm * 1.2 + 80 + rng() * 150);
+      if (bt.indexOf('Sleeper') !== -1) price = Math.round(price * 1.2);
+      if (bt.indexOf('Multi-Axle') !== -1) price = Math.round(price * 1.3);
+      var sts = ['Available', 'Available', 'Filling Fast', (Math.floor(rng() * 15) + 2) + ' Seats Left', 'Available'][Math.floor(rng() * 5)];
+      var rating = (3.2 + rng() * 1.7).toFixed(1);
+      deps.push({
+        col1: op.name, col1sub: bt,
+        departure: dep, arrival: arr, duration: fmtDur(dur),
+        col5: '\u2605 ' + rating,
+        price: '\u20B9' + price.toLocaleString('en-IN'),
+        status: sts,
+      });
+    }
+    deps.sort(function (a, b) { return a.departure.localeCompare(b.departure); });
+    return deps;
   }
 
   // ===== Utility Functions =====
